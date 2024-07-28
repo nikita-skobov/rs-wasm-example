@@ -39,8 +39,8 @@ extern "C" fn string_example() -> u32 {
   let data = unsafe { fill_data_from_host() };
   let s = String::from_utf8_lossy(&data).to_string();
   let mut mything: MyThing = serde_json::from_str(&s).expect("Failed to deserialize");
-  mything.a = "hello from wasm!".to_string();
-  mything.x += 1.5;
+  mything.x = mything.a.chars().filter(|c| *c == ' ').count() as f32;
+  mything.a.push_str("hello from wasm");
 
   let mything_json = serde_json::to_string_pretty(&mything).expect("Failed to serialize");
 

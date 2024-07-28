@@ -105,8 +105,12 @@ fn main() {
     setup_wasm("mywasm", wasm_contents);
     println!("{}ms to setup wasm", t.elapsed().as_millis());
 
+    let mut a_str = "".to_string();
+    for i in 0..100_000 {
+        a_str.push(if i % 2 == 0 { 'a' } else { ' ' });
+    }
     let t = std::time::Instant::now();
-    let input_data = r#"{ "x": 2.3, "a": "hello world!" }"#;
+    let input_data = format!(r#"{{ "x": 2.3, "a": "{}" }}"#, a_str);
     let input_data_vec = input_data.as_bytes().to_vec();
     run_wasm("mywasm", input_data_vec);
     println!("{}ms to run wasm", t.elapsed().as_millis());
