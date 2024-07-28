@@ -1,16 +1,41 @@
 use wasmtime::*;
+use std::{collections::HashMap, sync::{Mutex, OnceLock}};
 
-/// use WASM_CONTENTS string by default, or if file path provided
-/// load wasm from file
-fn main() {
-    let use_wasm_binary_path = std::env::args().nth(1).expect("Must provide path to wasm file");
+pub struct WasmRunner {
+    pub store: Store<Vec<u8>>,
+    pub instance: Instance,
+}
+
+fn wasmmap() -> &'static Mutex<HashMap<String, WasmRunner>> {
+    static WASM_DATA: OnceLock<Mutex<HashMap<String, WasmRunner>>> = OnceLock::new();
+    WASM_DATA.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn run_wasm(name: &str, data: Vec<u8>) {
+    let mut lock = wasmmap().lock().expect("Failed to acquire lock");
+    if let Some(wasm_runner) = lock.get_mut(name) {
+        let entrypoint_func = match wasm_runner.instance.get_typed_func::<(), u32>(&mut wasm_runner.store, "string_example") {
+            Ok(tf) => tf,
+            Err(_) => {
+                println!("Unable to find wasm_entrypoint");
+                return;
+            }
+        };
+        *wasm_runner.store.data_mut() = data;
+
+        let resp = entrypoint_func.call(&mut wasm_runner.store, ()).unwrap();
+        println!("RESP: {}", resp);
+        let store_data_str = String::from_utf8_lossy(wasm_runner.store.data());
+        println!("MY DATA: {}", store_data_str);
+    } else {
+        panic!("Failed to find {name} in wasm map data");
+    }
+}
+
+fn setup_wasm(name: &str, wasm_data: Vec<u8>) {
     let engine = Engine::default();
-    let wasm_contents = std::fs::read(use_wasm_binary_path).expect("Failed to read wasm file");
-
-    let input_data = r#"{ "x": 2.3, "a": "hello world!" }"#;
-    let input_data_vec = input_data.as_bytes().to_vec();
-    let mut store: Store<_> = Store::new(&engine, input_data_vec);
-    let module = Module::new(store.engine(), wasm_contents).expect("Failed to compile wasm module");
+    let mut store: Store<_> = Store::new(&engine, vec![]);
+    let module = Module::new(store.engine(), wasm_data).expect("Failed to compile wasm module");
     let mut linker: Linker<_> = Linker::new(store.engine());
     linker
         .func_wrap(
@@ -59,16 +84,36 @@ fn main() {
         .instantiate(&mut store, &module)
         .expect("Failed to instantiate wasm module");
 
-    let entrypoint_func = match instance.get_typed_func::<(), u32>(&mut store, "string_example") {
-        Ok(tf) => tf,
-        Err(_) => {
-            println!("Unable to find wasm_entrypoint");
-            return;
-        }
-    };
+    let lock = wasmmap().lock();
+    if let Ok(mut lock) = lock {
+        lock.insert(name.to_string(), WasmRunner {
+            store,
+            instance,
+        });
+    }
 
-    let resp = entrypoint_func.call(&mut store, ()).unwrap();
-    println!("RESP: {}", resp);
-    let store_data_str = String::from_utf8_lossy(store.data());
-    println!("MY DATA: {}", store_data_str);
+}
+
+
+/// use WASM_CONTENTS string by default, or if file path provided
+/// load wasm from file
+fn main() {
+    let use_wasm_binary_path = std::env::args().nth(1).expect("Must provide path to wasm file");
+    let wasm_contents = std::fs::read(use_wasm_binary_path).expect("Failed to read wasm file");
+
+    let t = std::time::Instant::now();
+    setup_wasm("mywasm", wasm_contents);
+    println!("{}ms to setup wasm", t.elapsed().as_millis());
+
+    let t = std::time::Instant::now();
+    let input_data = r#"{ "x": 2.3, "a": "hello world!" }"#;
+    let input_data_vec = input_data.as_bytes().to_vec();
+    run_wasm("mywasm", input_data_vec);
+    println!("{}ms to run wasm", t.elapsed().as_millis());
+
+    let t = std::time::Instant::now();
+    let input_data = r#"{ "x": 102.3, "a": "" }"#;
+    let input_data_vec = input_data.as_bytes().to_vec();
+    run_wasm("mywasm", input_data_vec);
+    println!("{}ms to run wasm", t.elapsed().as_millis());
 }
