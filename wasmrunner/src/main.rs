@@ -7,7 +7,9 @@ fn main() {
     let engine = Engine::default();
     let wasm_contents = std::fs::read(use_wasm_binary_path).expect("Failed to read wasm file");
 
-    let mut store: Store<_> = Store::new(&engine, vec![b'h', b'e', b'l', b'l', b'o', b'w', b' ', b'w', b'o', b'r', b'l', b'd']);
+    let input_data = r#"{ "x": 2.3, "a": "hello world!" }"#;
+    let input_data_vec = input_data.as_bytes().to_vec();
+    let mut store: Store<_> = Store::new(&engine, input_data_vec);
     let module = Module::new(store.engine(), wasm_contents).expect("Failed to compile wasm module");
     let mut linker: Linker<_> = Linker::new(store.engine());
     linker
@@ -67,5 +69,6 @@ fn main() {
 
     let resp = entrypoint_func.call(&mut store, ()).unwrap();
     println!("RESP: {}", resp);
-    println!("MY DATA: {:?}", store.data());
+    let store_data_str = String::from_utf8_lossy(store.data());
+    println!("MY DATA: {}", store_data_str);
 }
