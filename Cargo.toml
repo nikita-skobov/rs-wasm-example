@@ -1,0 +1,15 @@
+[workspace]
+
+members = [
+    "wasmrunner",
+    "examplelib"
+]
+
+[profile.dev]
+strip = "symbols"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = "symbols"
+codegen-units = 1
